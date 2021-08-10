@@ -1,0 +1,54 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+
+#include "HLSLSupport.cginc"
+#include "Packages/jp.keijiro.pcx/Runtime/Shaders/Common.cginc"
+
+StructuredBuffer<float4> SourceBuffer;
+RWStructuredBuffer<float4> OutputBuffer;
+
+CBUFFER_START(Params)
+float Time;
+CBUFFER_END
+
+static const float PI = 3.14159265f;
+
+[numthreads(128,1,1)]
+void CSMain (uint id : SV_DispatchThreadID)
+{
+    float4 pt = SourceBuffer[id];
+    float4 out_pt = SourceBuffer[id];
+    half3 c = PcxDecodeColor(asuint(pt.w));
+
+    float round_per_sec = 10.0f;
+    float phi = atan2(pt.y, pt.x) + fmod(Time, round_per_sec) / round_per_sec * 2.0 * PI;
+
+    float t_erode = 3.0;
+    float t_rot = 3.0;
+    float t_dilate = 3.0;
+    float t_dilateRot = 1.0;
+    float t_total = t_erode + t_rot + t_dilate + t_dilateRot;
+    float t = fmod(Time, t_total);
+
+    float l = length(pt.xy);
+    if (t < t_erode) {
+        l += l * cos(t / t_erode * 2.0 * PI / 4.0);
+    }
+    else if (t - t_erode < t_rot) {
+        l += 0.0;
+    }
+    else if (t - t_erode - t_rot < t_dilate) {
+        l += l * pow((t - t_rot - t_erode) / t_dilate, 0.2);
+    }
+    else if (t - t_erode - t_rot - t_dilate < t_dilateRot) {
+        l += l;
+    }
+
+    out_pt.xy = float2(cos(phi), sin(phi)) * l;
+    
+    c *= 0.5;
+    c *= 1 + 0.5*pow(abs(sin(l * 0.27 - Time * 1.1)), 20);    
+    out_pt.w = asfloat(PcxEncodeColor(c*2));
+    OutputBuffer[id] = out_pt;
+}
